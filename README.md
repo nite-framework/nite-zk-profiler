@@ -382,7 +382,7 @@ nite-zk check [<source>]     Measure and compare against zk-budget.json
 Designed to work as a single CI step:
 
 ```yaml
-- run: npx nite-zk-profiler check src/Main.compact
+- run: npx @nite-framework/nite-zk-profiler check src/Main.compact
 ```
 
 `profile` and `check` exit 0 on success and 1 on failure, so no wrapper script is needed. `check` fails only when a circuit exceeds its declared `maxK`, or, under `--strict`, when a circuit is missing from the budget entirely.
@@ -390,10 +390,10 @@ Designed to work as a single CI step:
 ## Installing
 
 ```text
-npm install --save-dev nite-zk-profiler
+npm install --save-dev @nite-framework/nite-zk-profiler
 ```
 
-The package ships as ES modules and runs on Node 20 or newer, and on Bun. It expects a supported Compact toolchain already installed, since it drives `compact` and the `zkir` that ships beside it rather than bundling either.
+The published command is `nite-zk` regardless of the package name. The package ships as ES modules and runs on Node 20 or newer, and on Bun. It expects a supported Compact toolchain already installed, since it drives `compact` and the `zkir` that ships beside it rather than bundling either.
 
 ## Development
 

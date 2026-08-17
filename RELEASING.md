@@ -14,22 +14,34 @@ the matching GitHub Release, so the two never drift apart.
    Do this before publishing anything. The `repository` field in package.json
    points at the GitHub repo, and npm renders that link on the package page.
 
-2. **Create an npm access token.**
+2. **Create an npm access token that covers this package name.**
 
    On npmjs.com, under Access Tokens, create a **Granular Access Token** with
-   read and write permission for this package. Classic automation tokens also
-   work, but granular tokens can be scoped to a single package and expire.
+   read and write permission for the `@nite-framework` scope.
+
+   The token's scope has to match the package name or the publish is rejected
+   with `E403`. This package is `@nite-framework/nite-zk-profiler`, so a token
+   scoped to `@nite-framework` covers it.
+
+   Note the ordering trap if the name ever changes: a granular token can only
+   select packages that already exist. Publishing a brand new **unscoped** name
+   therefore needs a token with **All packages** access, because there is no
+   package yet to grant it against. Publishing inside a scope you own avoids
+   that entirely.
 
 3. **Add the token to GitHub.**
 
    Repository Settings, Secrets and variables, Actions, New repository secret.
    Name it `NPM_TOKEN`.
 
-4. **Allow Actions to create releases.**
+4. **Leave workflow permissions read only.**
 
-   Repository Settings, Actions, General, Workflow permissions. The workflow
-   requests `contents: write` explicitly, but the repository must not be set to
-   read only for it to take effect.
+   Repository Settings, Actions, General, Workflow permissions can stay on
+   "Read repository contents and packages permissions". `release.yml` declares
+   `contents: write` and `id-token: write` itself, and a workflow level
+   `permissions` block overrides the repository default. The default only
+   applies to workflows that do not declare one, so there is no reason to widen
+   it for every workflow in the repository.
 
 ## Cutting a release
 
@@ -88,11 +100,41 @@ separately if you go this route:
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
+## When a release fails
+
+Open the failed run under the repository's **Actions** tab and look at which
+step went red. The usual causes, in order:
+
+| Step that fails | Cause | Fix |
+| --- | --- | --- |
+| Publish to npm, `ENEEDAUTH` or `E401` | `NPM_TOKEN` secret missing or expired | Recreate the token and re-add the secret |
+| Publish to npm, `E403` "may not perform that action" | Token scope does not cover the package name | Match the token scope to the name, see setup step 2 |
+| Publish to npm, `E403` on a name you own | That version was already published | Bump to an unused version |
+| Publish to npm, provenance error | Repository is private, or `id-token: write` was removed | Provenance needs a public repo |
+| Fail if the tag does not match | Tag was created by hand | Use `npm version`, which tags for you |
+| Create the GitHub Release | `contents: write` missing from the workflow | Restore the `permissions` block |
+
+Repository level workflow permissions are **not** a likely cause, because the
+workflow grants itself what it needs.
+
+A tag that already failed can be reused. Delete it locally and remotely, then
+push it again once the cause is fixed:
+
+```text
+git tag -d v0.1.2
+git push origin :refs/tags/v0.1.2
+git tag v0.1.2 && git push origin v0.1.2
+```
+
+That works for the GitHub Release. It does **not** work for npm: once a version
+number is published it can never be reused, so if the publish step succeeded and
+a later step failed, bump the version rather than retrying the same one.
+
 ## Verifying a release
 
 ```text
-npm view nite-zk-profiler versions      # every published version
-npx nite-zk-profiler@latest --version   # what a fresh install gets
+npm view @nite-framework/nite-zk-profiler versions   # every published version
+npx @nite-framework/nite-zk-profiler@latest -v      # what a fresh install gets
 ```
 
 The GitHub repository shows published versions under **Releases** in the right

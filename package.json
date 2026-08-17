@@ -1,5 +1,5 @@
 {
-  "name": "nite-zk-profiler",
+  "name": "@nite-framework/nite-zk-profiler",
   "version": "0.1.2",
   "description": "See what a Compact circuit costs to prove, without generating proving keys",
   "type": "module",
