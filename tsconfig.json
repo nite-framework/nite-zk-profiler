@@ -1,15 +1,18 @@
 {
   "compilerOptions": {
     // This package ships to npm and runs on Node, so it is typed as a Node ESM
-    // library rather than as a Bun app. Bun is the dev toolchain only.
+    // library. Source imports carry `.ts` extensions so Node can run the
+    // TypeScript directly; `rewriteRelativeImportExtensions` turns them into
+    // `.js` on emit, which is what the published package needs.
     "lib": ["ESNext"],
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "nodenext",
     "moduleDetection": "force",
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
 
-    // `node` for the runtime the published CLI targets, `bun` for `bun:test`.
-    "types": ["node", "bun"],
+    "types": ["node"],
 
     "noEmit": true,
     "verbatimModuleSyntax": true,

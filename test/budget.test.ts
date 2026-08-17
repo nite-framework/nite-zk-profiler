@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 
-import { analyze } from "../src/analyze.js";
-import { type Budget, budgetFrom, check } from "../src/budget.js";
+import { analyze } from "../src/analyze.ts";
+import { type Budget, budgetFrom, check } from "../src/budget.ts";
 
 const costs = analyze([
   { circuit: "cheap", k: 9, rows: 305 },
@@ -14,8 +15,8 @@ const budget: Budget = {
 };
 
 describe("budgetFrom", () => {
-  test("grants each circuit exactly its current k", () => {
-    expect(budgetFrom(costs, "0.31.x").circuits).toEqual({
+  it("grants each circuit exactly its current k", () => {
+    assert.deepEqual(budgetFrom(costs, "0.31.x").circuits, {
       cheap: { maxK: 9 },
       pricey: { maxK: 13 },
     });
@@ -23,61 +24,64 @@ describe("budgetFrom", () => {
 });
 
 describe("check", () => {
-  test("passes when every circuit sits at its ceiling", () => {
+  it("passes when every circuit sits at its ceiling", () => {
     const result = check(costs, budget, false);
-    expect(result.failed).toBe(false);
-    expect(result.rows.map((r) => r.status)).toEqual(["at", "at"]);
+    assert.equal(result.failed, false);
+    assert.deepEqual(
+      result.rows.map((r) => r.status),
+      ["at", "at"],
+    );
   });
 
-  test("passes when a circuit is under its ceiling", () => {
+  it("passes when a circuit is under its ceiling", () => {
     const generous: Budget = {
       toolchain: "0.31.x",
       circuits: { cheap: { maxK: 10 }, pricey: { maxK: 13 } },
     };
     const result = check(costs, generous, false);
-    expect(result.failed).toBe(false);
-    expect(result.rows[0]!.status).toBe("under");
+    assert.equal(result.failed, false);
+    assert.equal(result.rows[0]!.status, "under");
   });
 
-  test("fails only when a circuit exceeds its declared ceiling", () => {
+  it("fails only when a circuit exceeds its declared ceiling", () => {
     const tight: Budget = {
       toolchain: "0.31.x",
       circuits: { cheap: { maxK: 9 }, pricey: { maxK: 12 } },
     };
     const result = check(costs, tight, false);
-    expect(result.failed).toBe(true);
-    expect(result.rows.find((r) => r.circuit === "pricey")!.status).toBe("over");
+    assert.equal(result.failed, true);
+    assert.equal(result.rows.find((r) => r.circuit === "pricey")!.status, "over");
   });
 
   // A deliberate cost increase is not a regression. Raising the ceiling in the
   // same commit is the intended workflow, so it must pass.
-  test("passes once a raised ceiling is committed", () => {
+  it("passes once a raised ceiling is committed", () => {
     const raised: Budget = {
       toolchain: "0.31.x",
       circuits: { cheap: { maxK: 9 }, pricey: { maxK: 14 } },
     };
-    expect(check(costs, raised, false).failed).toBe(false);
+    assert.equal(check(costs, raised, false).failed, false);
   });
 
-  test("warns but passes on an undeclared circuit by default", () => {
+  it("warns but passes on an undeclared circuit by default", () => {
     const partial: Budget = { toolchain: "0.31.x", circuits: { cheap: { maxK: 9 } } };
     const result = check(costs, partial, false);
-    expect(result.failed).toBe(false);
-    expect(result.rows.find((r) => r.circuit === "pricey")!.status).toBe("undeclared");
+    assert.equal(result.failed, false);
+    assert.equal(result.rows.find((r) => r.circuit === "pricey")!.status, "undeclared");
   });
 
-  test("fails on an undeclared circuit under --strict", () => {
+  it("fails on an undeclared circuit under --strict", () => {
     const partial: Budget = { toolchain: "0.31.x", circuits: { cheap: { maxK: 9 } } };
-    expect(check(costs, partial, true).failed).toBe(true);
+    assert.equal(check(costs, partial, true).failed, true);
   });
 
-  test("reports a removed circuit as stale without failing", () => {
+  it("reports a removed circuit as stale without failing", () => {
     const extra: Budget = {
       toolchain: "0.31.x",
       circuits: { ...budget.circuits, gone: { maxK: 9 } },
     };
     const result = check(costs, extra, true);
-    expect(result.failed).toBe(false);
-    expect(result.rows.find((r) => r.circuit === "gone")!.status).toBe("stale");
+    assert.equal(result.failed, false);
+    assert.equal(result.rows.find((r) => r.circuit === "gone")!.status, "stale");
   });
 });

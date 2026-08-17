@@ -11,22 +11,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
+      # Node 24 runs the TypeScript tests directly through native type
+      # stripping, so no loader or build step is needed before testing.
+      - uses: actions/setup-node@v4
         with:
-          bun-version: latest
+          node-version: 24
+          cache: npm
 
-      - run: bun install --frozen-lockfile
+      - run: npm ci
 
       - name: Typecheck
-        run: bun run typecheck
+        run: npm run typecheck
 
       # The Compact toolchain is not installed on the runner, so the
       # integration tests skip themselves and the unit tests still run.
       - name: Test
-        run: bun test
+        run: npm test
 
       - name: Build
-        run: bun run build
+        run: npm run build
 
       - name: Verify the published tarball contents
-        run: bun pm pack --dry-run
+        run: npm pack --dry-run

@@ -1,4 +1,4 @@
-import type { Measurement } from "./measure.js";
+import type { Measurement } from "./measure.ts";
 
 export interface CircuitCost extends Measurement {
   /** Rows the prover works over: 2^k. */

@@ -1,0 +1,17 @@
+{
+  // Emit configuration for the published package. Only `src` is compiled, and
+  // the `.ts` import specifiers are rewritten to `.js` so the output is plain
+  // Node ESM with no loader or bundler required at runtime.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    // Declarations ship so the modules can be imported programmatically, for
+    // example by an editor extension. Map files do not, since the package does
+    // not include the sources they would point at.
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src"]
+}

@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
-import { ProfilerError } from "./errors.js";
-import type { CircuitCost } from "./analyze.js";
+import { ProfilerError } from "./errors.ts";
+import type { CircuitCost } from "./analyze.ts";
 
 export const DEFAULT_BUDGET_PATH = "zk-budget.json";
 

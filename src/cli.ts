@@ -1,17 +1,17 @@
 #!/usr/bin/env node
-import { analyze } from "./analyze.js";
+import { analyze } from "./analyze.ts";
 import {
   DEFAULT_BUDGET_PATH,
   budgetFrom,
   check,
   readBudget,
   writeBudget,
-} from "./budget.js";
-import { compileSkipZk } from "./compile.js";
-import { ProfilerError } from "./errors.js";
-import { measure } from "./measure.js";
-import { checkJson, formatCheck, formatProfile, profileJson } from "./report.js";
-import { SUPPORTED_RANGES, resolveToolchain } from "./toolchain.js";
+} from "./budget.ts";
+import { compileSkipZk } from "./compile.ts";
+import { ProfilerError } from "./errors.ts";
+import { measure } from "./measure.ts";
+import { checkJson, formatCheck, formatProfile, profileJson } from "./report.ts";
+import { SUPPORTED_RANGES, resolveToolchain } from "./toolchain.ts";
 
 const USAGE = `nite-zk - see what a Compact circuit costs to prove
 
@@ -72,13 +72,15 @@ export function parseArgs(argv: string[]): Options {
 
 /** Compile and measure. Shared by all three commands. */
 function profileSource(source: string, opts: Options) {
-  const started = Date.now();
+  // Monotonic, so a wall clock adjustment mid run cannot produce a negative
+  // or wildly wrong duration.
+  const started = performance.now();
   const toolchain = resolveToolchain(opts.versionArg);
   const compiled = compileSkipZk(source, toolchain, opts.out);
 
   try {
     const costs = analyze(measure(compiled.zkirDir, toolchain, source));
-    return { costs, toolchain, elapsedMs: Date.now() - started };
+    return { costs, toolchain, elapsedMs: performance.now() - started };
   } finally {
     compiled.cleanup();
   }

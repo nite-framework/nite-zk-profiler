@@ -1,6 +1,6 @@
-import type { CircuitCost } from "./analyze.js";
-import type { CheckResult, Status } from "./budget.js";
-import type { Toolchain } from "./toolchain.js";
+import type { CircuitCost } from "./analyze.ts";
+import type { CheckResult, Status } from "./budget.ts";
+import type { Toolchain } from "./toolchain.ts";
 
 function pad(text: string, width: number): string {
   return text.padEnd(width);

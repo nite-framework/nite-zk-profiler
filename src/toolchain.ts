@@ -3,7 +3,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { ProfilerError } from "./errors.js";
+import { ProfilerError } from "./errors.ts";
 
 /** Toolchain lines this tool has been verified against. */
 export const SUPPORTED_RANGES = ["0.31.x"];

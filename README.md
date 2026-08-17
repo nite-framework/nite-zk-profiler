@@ -398,11 +398,13 @@ The package ships as ES modules and runs on Node 20 or newer, and on Bun. It exp
 ## Development
 
 ```text
-bun install
-bun test          # unit tests, plus integration tests against the real toolchain
-bun run typecheck
-bun run build
+npm install
+npm test          # unit tests, plus integration tests against the real toolchain
+npm run typecheck
+npm run build
 ```
+
+Tests are TypeScript and run directly through Node's native type stripping, so development needs Node 22.18 or newer. The published package is plain JavaScript and runs on Node 20.
 
 The integration tests skip themselves when no supported compiler is present, so the suite still runs on a machine without one.
 

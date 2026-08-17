@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
-import { NoProvableCircuitsError, ProfilerError } from "./errors.js";
-import type { Toolchain } from "./toolchain.js";
+import { NoProvableCircuitsError, ProfilerError } from "./errors.ts";
+import type { Toolchain } from "./toolchain.ts";
 
 export interface Measurement {
   circuit: string;

@@ -7,6 +7,7 @@
     "nite-zk": "./dist/cli.js"
   },
   "main": "./dist/cli.js",
+  "types": "./dist/cli.d.ts",
   "files": [
     "dist",
     "README.md"
@@ -14,6 +15,7 @@
   "engines": {
     "node": ">=20"
   },
+  "packageManager": "npm@11.10.1",
   "keywords": [
     "midnight",
     "compact",
@@ -35,14 +37,14 @@
     "access": "public"
   },
   "scripts": {
-    "build": "bun build ./src/cli.ts --outdir dist --target node --format esm && chmod +x dist/cli.js",
-    "test": "bun test",
+    "build": "tsc -p tsconfig.build.json",
+    "postbuild": "node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
+    "test": "node --test",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "bun run typecheck && bun test && bun run build"
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
-    "@types/bun": "latest",
     "@types/node": "^26.2.0",
-    "typescript": "^5"
+    "typescript": "^5.9.3"
   }
 }

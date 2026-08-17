@@ -36,16 +36,17 @@ the matching GitHub Release, so the two never drift apart.
 1. **Make sure `main` is clean and green.**
 
    ```text
-   bun run typecheck && bun test && bun run build
+   npm run typecheck && npm test && npm run build
    ```
 
 2. **Bump the version and tag it.**
 
    ```text
-   bun pm version patch     # or minor, major, or an exact version like 1.0.0
+   npm version patch        # or minor, major, or an exact version like 1.0.0
    ```
 
-   This edits package.json, commits the change, and creates a `v<version>` tag.
+   This edits package.json and package-lock.json, commits both, and creates a
+   `v<version>` tag.
 
 3. **Push the commit and the tag.**
 
@@ -74,11 +75,11 @@ even after `npm unpublish`.
 If the workflow is unavailable:
 
 ```text
-bun login
-bun publish
+npm login
+npm publish
 ```
 
-`bun publish` runs `prepublishOnly`, which typechecks, tests and builds before
+`npm publish` runs `prepublishOnly`, which typechecks, tests and builds before
 packing, so a missing or stale `dist` cannot ship. It does not create the
 GitHub Release, and it does not attach a provenance attestation. Tag and push
 separately if you go this route:
