@@ -118,6 +118,8 @@ step went red. The usual causes, in order:
 | --- | --- | --- |
 | Publish to npm, `ENEEDAUTH` or `E401` | Trusted publisher not configured, or it names a different repository or workflow file | Check the entry on npmjs.com matches this repo and `release.yml` exactly |
 | Publish to npm, `EOTP` "requires a one-time password" | The run fell back to token auth instead of OIDC | Confirm `id-token: write` is present and no `NODE_AUTH_TOKEN` is set |
+| Publish to npm, `E404` on a package that exists | The request was unauthenticated. Usually `registry-url` on `setup-node`, which writes an .npmrc referencing an absent `NODE_AUTH_TOKEN` and stops npm attempting OIDC | Drop `registry-url`; npm defaults to registry.npmjs.org |
+| Publish to npm, `E404` with a clean .npmrc | Trusted publisher names an **Environment** the job does not join | Clear the Environment field on npm, or add a matching `environment:` to the job |
 | Publish to npm, `E403` "may not perform that action" | Package name outside the scope you own | The name must sit under a scope your account controls |
 | Publish to npm, `E403` on a name you own | That version was already published | Bump to an unused version |
 | Publish to npm, provenance error | Repository is private, or `id-token: write` was removed | Provenance needs a public repo |

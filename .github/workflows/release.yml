@@ -18,17 +18,38 @@ jobs:
         with:
           fetch-depth: 0 # full history, so release notes can diff against the last tag
 
+      # Deliberately no `registry-url`. Setting it makes setup-node write an
+      # .npmrc containing `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`.
+      # With trusted publishing there is no NODE_AUTH_TOKEN, so npm sends an
+      # empty credential and never attempts the OIDC exchange. The registry
+      # answers 404 on the PUT, which reads like a missing package but actually
+      # means unauthenticated. npm defaults to registry.npmjs.org anyway.
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-          registry-url: https://registry.npmjs.org
 
       # Trusted publishing needs npm 11.5.1 or later. Node 24 already ships a
       # new enough npm, but pinning to latest keeps this from silently
       # regressing if the runner image moves backwards.
       - name: Ensure npm supports trusted publishing
         run: npm install -g npm@latest
+
+      - name: Preflight the publish identity
+        run: |
+          echo "npm $(npm --version)"
+          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "OIDC token endpoint present"
+          else
+            echo "NO OIDC token endpoint: id-token permission is missing"
+            exit 1
+          fi
+          if [ -f .npmrc ] || [ -f "$HOME/.npmrc" ]; then
+            echo "an .npmrc exists, which can shadow OIDC:"
+            cat .npmrc "$HOME/.npmrc" 2>/dev/null | sed 's/=.*/=<redacted>/'
+          else
+            echo "no .npmrc, npm will use OIDC"
+          fi
 
       - run: npm ci
 
