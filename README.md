@@ -372,12 +372,47 @@ Anything outside this range is rejected with a clear error naming the version fo
 ```text
 nite-zk profile <source>     Report rows, k and relative cost per circuit
 nite-zk save <source>        Write zk-budget.json from current measurements
-nite-zk check [<source>]     Measure and compare against zk-budget.json
+nite-zk check [<source>]     Compare against zk-budget.json
 
+  --deep                     Also generate real proving keys, and report
+                             measured setup time and prover key size
   --json                     Machine readable output
   --out <dir>                Compile into a specific directory
   --budget <file>            Use a different baseline path
+  --strict                   check: fail on circuits missing from the budget
+  --no-color                 Plain output (NO_COLOR is honoured too)
+  +VERSION                   Pin the Compact toolchain, e.g. +0.31.1
 ```
+
+`save` records which contract the budget describes, so `check` needs no
+arguments afterwards. That is what makes it a one line CI step.
+
+### Measuring the real thing
+
+`--deep` stops mocking and generates actual proving keys. It answers two
+questions the fast path cannot, and both are measured rather than modelled:
+
+```text
+  circuit   rows   k  capacity   cost  setup  prover key
+  k05         24   5        32     1x  156ms       14 KB
+  k13       4189  13      8192   256x   2.3s      2.7 MB
+  k14      11965  14     16384   512x   4.6s      5.0 MB
+  k15      19657  15     32768  1024x   9.6s      9.5 MB
+```
+
+Setup time and prover key size both roughly double per step in `k`, which is
+the same 2^k curve proving time follows. The prover key size is worth attention
+on its own: it is what users download and hold in memory, and a k=15 circuit
+carries a 9.5 MB key against 14 KB at k=5.
+
+This mode is slow by design, since it does the work `--skip-zk` exists to avoid.
+Use it when choosing between designs, not in an edit loop.
+
+**On estimating proving time.** The tool does not print a predicted proving
+time in seconds, because it cannot measure one without generating a proof, and
+a number extrapolated from someone else's hardware would be fiction dressed as
+data. What it gives instead is the `cost` column, which is the ratio proving
+time actually follows, and `--deep` for measured setup cost on your own machine.
 
 Designed to work as a single CI step:
 

@@ -8,6 +8,11 @@ export const DEFAULT_BUDGET_PATH = "zk-budget.json";
 export interface Budget {
   /** Toolchain line the ceilings were established against. */
   toolchain: string;
+  /**
+   * Contract this budget describes, relative to the budget file. Recorded so
+   * `check` can run with no arguments, which is what a CI step wants.
+   */
+  source?: string;
   circuits: Record<string, { maxK: number }>;
 }
 
@@ -31,12 +36,16 @@ export interface CheckResult {
 }
 
 /** Build a budget that grants every circuit exactly what it currently costs. */
-export function budgetFrom(costs: CircuitCost[], toolchainLine: string): Budget {
+export function budgetFrom(
+  costs: CircuitCost[],
+  toolchainLine: string,
+  source?: string,
+): Budget {
   const circuits: Budget["circuits"] = {};
   for (const c of [...costs].sort((a, b) => a.circuit.localeCompare(b.circuit))) {
     circuits[c.circuit] = { maxK: c.k };
   }
-  return { toolchain: toolchainLine, circuits };
+  return { toolchain: toolchainLine, source, circuits };
 }
 
 export function writeBudget(path: string, budget: Budget): void {

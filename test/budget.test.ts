@@ -21,6 +21,11 @@ describe("budgetFrom", () => {
       pricey: { maxK: 13 },
     });
   });
+
+  // Recorded so `check` can run with no arguments, which is what CI wants.
+  it("records the contract it describes", () => {
+    assert.equal(budgetFrom(costs, "0.31.x", "src/Main.compact").source, "src/Main.compact");
+  });
 });
 
 describe("check", () => {

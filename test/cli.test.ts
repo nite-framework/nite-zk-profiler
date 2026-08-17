@@ -29,6 +29,18 @@ describe("parseArgs", () => {
     assert.equal(opts.source, "S.compact");
   });
 
+  it("parses --deep and --no-color", () => {
+    const opts = parseArgs(["profile", "S.compact", "--deep", "--no-color"]);
+    assert.equal(opts.deep, true);
+    assert.equal(opts.noColor, true);
+  });
+
+  it("allows check with no source, which the budget can supply", () => {
+    const opts = parseArgs(["check"]);
+    assert.equal(opts.command, "check");
+    assert.equal(opts.source, undefined);
+  });
+
   it("reads --out and --budget values", () => {
     const opts = parseArgs(["check", "S.compact", "--out", "build", "--budget", "b.json"]);
     assert.equal(opts.out, "build");
