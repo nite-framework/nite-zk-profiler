@@ -25,13 +25,18 @@ export class Progress {
   start(label: string): void {
     this.label = label;
     if (!this.active) return;
+    // Draw once up front, so the first phase is visible immediately rather than
+    // after the first tick.
+    this.render();
     this.timer = setInterval(() => this.render(), 80);
     this.timer.unref?.();
   }
 
   update(label: string): void {
     this.label = label;
-    if (!this.active) this.render();
+    // Redraw straight away so a phase change shows even if the next tick is
+    // still 80ms out.
+    this.render();
   }
 
   private render(): void {

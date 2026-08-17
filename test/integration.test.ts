@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import { analyze } from "../src/analyze.ts";
 import { compileSkipZk } from "../src/compile.ts";
 import { NoProvableCircuitsError, ProfilerError } from "../src/errors.ts";
-import { measure } from "../src/measure.ts";
+import { measureParallel } from "../src/measure.ts";
 import { resolveToolchain } from "../src/toolchain.ts";
 
 /**
@@ -27,7 +27,7 @@ const skip = supportedToolchainAvailable()
 const fixture = (name: string) => join(import.meta.dirname, "fixtures", name);
 
 describe("toolchain resolution", { skip }, () => {
-  it("pairs zkir with the compiler that ran", () => {
+  it("pairs zkir with the compiler that ran", async () => {
     const toolchain = resolveToolchain();
     assert.match(toolchain.version, /^0\.31\./);
     assert.match(toolchain.zkirVersion, /midnight-zkir 2\./);
@@ -37,13 +37,13 @@ describe("toolchain resolution", { skip }, () => {
     assert.ok(existsSync(toolchain.zkirPath));
   });
 
-  it("honours a +VERSION pin", () => {
+  it("honours a +VERSION pin", async () => {
     const toolchain = resolveToolchain("+0.31.1");
     assert.equal(toolchain.version, "0.31.1");
     assert.ok(toolchain.zkirPath.includes(join("versions", "0.31.1")));
   });
 
-  it("explains a version pin that is not installed", () => {
+  it("explains a version pin that is not installed", async () => {
     assert.throws(
       () => resolveToolchain("+0.1.0"),
       /Could not determine the Compact compiler version/,
@@ -52,11 +52,11 @@ describe("toolchain resolution", { skip }, () => {
 });
 
 describe("end to end profiling", { skip }, () => {
-  it("measures every exported circuit", () => {
+  it("measures every exported circuit", async () => {
     const toolchain = resolveToolchain();
-    const compiled = compileSkipZk(fixture("Sample.compact"), toolchain);
+    const compiled = await compileSkipZk(fixture("Sample.compact"), toolchain);
     try {
-      const costs = analyze(measure(compiled.zkirDir, toolchain, "Sample.compact"));
+      const costs = analyze(await measureParallel(compiled.zkirDir, toolchain, "Sample.compact"));
       assert.deepEqual(
         costs.map((c) => c.circuit),
         ["balanceOf", "register"],
@@ -70,11 +70,11 @@ describe("end to end profiling", { skip }, () => {
     }
   });
 
-  it("resolves imports across files from a single entry point", () => {
+  it("resolves imports across files from a single entry point", async () => {
     const toolchain = resolveToolchain();
-    const compiled = compileSkipZk(fixture(join("multi", "Main.compact")), toolchain);
+    const compiled = await compileSkipZk(fixture(join("multi", "Main.compact")), toolchain);
     try {
-      const costs = analyze(measure(compiled.zkirDir, toolchain, "Main.compact"));
+      const costs = analyze(await measureParallel(compiled.zkirDir, toolchain, "Main.compact"));
       // The imported helper is inlined into its caller rather than emitting
       // ZKIR of its own, so its cost lands on the circuit that pays for it.
       assert.deepEqual(
@@ -86,12 +86,12 @@ describe("end to end profiling", { skip }, () => {
     }
   });
 
-  it("explains a contract with no provable circuits", () => {
+  it("explains a contract with no provable circuits", async () => {
     const toolchain = resolveToolchain();
-    const compiled = compileSkipZk(fixture("NoCircuits.compact"), toolchain);
+    const compiled = await compileSkipZk(fixture("NoCircuits.compact"), toolchain);
     try {
-      assert.throws(
-        () => measure(compiled.zkirDir, toolchain, "NoCircuits.compact"),
+      await assert.rejects(
+        () => measureParallel(compiled.zkirDir, toolchain, "NoCircuits.compact"),
         NoProvableCircuitsError,
       );
     } finally {
@@ -99,29 +99,29 @@ describe("end to end profiling", { skip }, () => {
     }
   });
 
-  it("surfaces compiler diagnostics on a broken contract", () => {
+  it("surfaces compiler diagnostics on a broken contract", async () => {
     const dir = mkdtempSync(join(tmpdir(), "nite-zk-test-"));
     const broken = join(dir, "Broken.compact");
     writeFileSync(broken, "pragma language_version 0.23;\nthis is not compact;\n");
     try {
-      assert.throws(() => compileSkipZk(broken, resolveToolchain()), ProfilerError);
+      await assert.rejects(() => compileSkipZk(broken, resolveToolchain()), ProfilerError);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("cleans up its temporary output directory", () => {
+  it("cleans up its temporary output directory", async () => {
     const toolchain = resolveToolchain();
-    const compiled = compileSkipZk(fixture("Sample.compact"), toolchain);
+    const compiled = await compileSkipZk(fixture("Sample.compact"), toolchain);
     assert.ok(existsSync(compiled.outDir));
     compiled.cleanup();
     assert.ok(!existsSync(compiled.outDir));
   });
 
-  it("keeps an explicitly requested output directory", () => {
+  it("keeps an explicitly requested output directory", async () => {
     const dir = mkdtempSync(join(tmpdir(), "nite-zk-out-"));
     const toolchain = resolveToolchain();
-    const compiled = compileSkipZk(fixture("Sample.compact"), toolchain, dir);
+    const compiled = await compileSkipZk(fixture("Sample.compact"), toolchain, dir);
     try {
       compiled.cleanup();
       assert.ok(existsSync(join(dir, "zkir")));

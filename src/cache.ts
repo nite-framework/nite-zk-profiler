@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import type { Measurement } from "./measure.ts";
 import type { Toolchain } from "./toolchain.ts";
+import { toolVersion } from "./version.ts";
 
 /**
  * Measurement cache, keyed on the emitted IR rather than on the source.
@@ -22,6 +23,10 @@ export function cacheDir(): string {
 /** Hash every emitted IR file, plus the toolchain that produced and reads it. */
 export function cacheKey(zkirDir: string, toolchain: Toolchain): string {
   const hash = createHash("sha256");
+  // The profiler's own version is part of the key. Without it, upgrading the
+  // tool would keep serving results produced by the previous measurement code,
+  // which looks exactly like the upgrade having no effect.
+  hash.update(toolVersion());
   hash.update(toolchain.version);
   hash.update(toolchain.zkirVersion);
 

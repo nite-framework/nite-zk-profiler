@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -21,11 +21,11 @@ export interface CompileResult {
  * `--skip-zk` is what makes profiling fast enough to sit in an edit loop: it
  * emits the IR and skips key generation, which is the slow part.
  */
-export function compileSkipZk(
+export async function compileSkipZk(
   source: string,
   toolchain: Toolchain,
   outDir?: string,
-): CompileResult {
+): Promise<CompileResult> {
   const temporary = outDir === undefined;
   const target = temporary
     ? mkdtempSync(join(tmpdir(), "nite-zk-"))
@@ -35,25 +35,38 @@ export function compileSkipZk(
   if (toolchain.versionArg) args.push(toolchain.versionArg);
   args.push("--skip-zk", resolve(source), target);
 
-  const res = spawnSync("compact", args, { encoding: "utf8" });
-
   const cleanup = () => {
     if (temporary) rmSync(target, { recursive: true, force: true });
   };
 
-  if (res.error) {
+  // Spawned asynchronously rather than with spawnSync so the event loop stays
+  // free. A synchronous spawn blocks timers, which freezes the progress
+  // display for the whole compile.
+  const { status, output, error } = await new Promise<{
+    status: number | null;
+    output: string;
+    error?: Error;
+  }>((resolvePromise) => {
+    const child = spawn("compact", args);
+    let out = "";
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (out += d));
+    child.on("error", (e) => resolvePromise({ status: null, output: out, error: e }));
+    child.on("close", (code) => resolvePromise({ status: code, output: out }));
+  });
+
+  if (error) {
     cleanup();
-    throw new ProfilerError("Could not run `compact compile`", String(res.error));
+    throw new ProfilerError("Could not run `compact compile`", String(error));
   }
 
-  if (res.status !== 0) {
+  if (status !== 0) {
     // The compiler's own diagnostics are better than anything worth inventing
     // here, so they are passed through unchanged.
-    const diagnostics = `${res.stdout ?? ""}${res.stderr ?? ""}`.trim();
     cleanup();
     throw new ProfilerError(
       `Compilation failed for ${source}`,
-      diagnostics || `compact exited with status ${res.status}`,
+      output.trim() || `compact exited with status ${status}`,
     );
   }
 

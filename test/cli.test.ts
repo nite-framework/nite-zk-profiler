@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import { parseArgs } from "../src/cli.ts";
+import { toolVersion } from "../src/version.ts";
 
 describe("parseArgs", () => {
   it("reads a command and source", () => {
@@ -45,5 +48,16 @@ describe("parseArgs", () => {
     const opts = parseArgs(["check", "S.compact", "--out", "build", "--budget", "b.json"]);
     assert.equal(opts.out, "build");
     assert.equal(opts.budget, "b.json");
+  });
+});
+
+describe("version reporting", () => {
+  // `npm version` edits package.json only, so a hardcoded literal here would
+  // silently report the wrong release after every bump.
+  it("matches package.json", () => {
+    const manifest = JSON.parse(
+      readFileSync(join(import.meta.dirname, "..", "package.json"), "utf8"),
+    );
+    assert.equal(toolVersion(), manifest.version);
   });
 });

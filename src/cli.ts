@@ -18,6 +18,7 @@ import { measureDeep } from "./deep.ts";
 import { ProfilerError } from "./errors.ts";
 import { measureParallel } from "./measure.ts";
 import { SUPPORTED_RANGES, resolveToolchain } from "./toolchain.ts";
+import { toolVersion } from "./version.ts";
 
 const USAGE = `nite-zk - see what a Compact circuit costs to prove
 
@@ -103,7 +104,7 @@ async function profileSource(source: string, opts: Options) {
   const toolchain = resolveToolchain(opts.versionArg);
 
   progress.update("compiling without proving keys");
-  const compiled = compileSkipZk(source, toolchain, opts.out);
+  const compiled = await compileSkipZk(source, toolchain, opts.out);
 
   try {
     // The compile is the cheap half, so it always runs and its output keys the
@@ -124,7 +125,7 @@ async function profileSource(source: string, opts: Options) {
 
     let deep: DeepByCircuit | undefined;
     if (opts.deep) {
-      const results = measureDeep(measurements, compiled.zkirDir, toolchain, (c, i, n) =>
+      const results = await measureDeep(measurements, compiled.zkirDir, toolchain, (c, i, n) =>
         progress.update(`generating proving keys  ${i + 1}/${n}  ${c}`),
       );
       deep = new Map(results.map((r) => [r.circuit, r]));
@@ -167,14 +168,16 @@ export async function run(argv: string[]): Promise<number> {
 
   if (opts.noColor || opts.json) setColorEnabled(false);
 
+  // Checked before the no-command case, since `nite-zk -v` carries no command
+  // and would otherwise fall through to the usage text.
+  if (opts.version) {
+    process.stdout.write(`nite-zk-profiler ${toolVersion()}\n`);
+    return 0;
+  }
+
   if (opts.help || !opts.command) {
     process.stdout.write(USAGE);
     return opts.command ? 0 : 1;
-  }
-
-  if (opts.version) {
-    process.stdout.write("nite-zk-profiler 0.1.4\n");
-    return 0;
   }
 
   if (!["profile", "save", "check"].includes(opts.command)) {

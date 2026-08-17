@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -25,17 +25,17 @@ export interface DeepMeasurement extends Measurement {
  * setup time on this machine, and the prover key size, which is what users end
  * up downloading and holding in memory.
  */
-export function measureDeep(
+export async function measureDeep(
   measurements: Measurement[],
   zkirDir: string,
   toolchain: Toolchain,
   onProgress?: (circuit: string, index: number, total: number) => void,
-): DeepMeasurement[] {
+): Promise<DeepMeasurement[]> {
   const workDir = mkdtempSync(join(tmpdir(), "nite-zk-keys-"));
   const results: DeepMeasurement[] = [];
 
   try {
-    measurements.forEach((m, i) => {
+    for (const [i, m] of measurements.entries()) {
       onProgress?.(m.circuit, i, measurements.length);
 
       const irFile = join(zkirDir, `${m.circuit}.zkir`);
@@ -43,24 +43,27 @@ export function measureDeep(
       const vk = join(workDir, `${m.circuit}.vk`);
 
       const started = performance.now();
-      const res = spawnSync(toolchain.zkirPath, ["compile", irFile, pk, vk], {
-        encoding: "utf8",
-      });
+      // Async so the progress display keeps animating. Key generation is the
+      // longest wait this tool has, so a frozen spinner here reads as a hang.
+      const { status, err } = await new Promise<{ status: number | null; err: string }>(
+        (resolvePromise) => {
+          const child = spawn(toolchain.zkirPath, ["compile", irFile, pk, vk]);
+          let captured = "";
+          child.stderr.on("data", (d) => (captured += d));
+          child.on("close", (code) => resolvePromise({ status: code, err: captured }));
+        },
+      );
       const setupMs = performance.now() - started;
 
-      if (res.status !== 0) {
+      if (status !== 0) {
         throw new ProfilerError(
           `Key generation failed for ${m.circuit}`,
-          (res.stderr ?? "").trim() || `zkir compile exited with ${res.status}`,
+          err.trim() || `zkir compile exited with ${status}`,
         );
       }
 
-      results.push({
-        ...m,
-        setupMs,
-        proverKeyBytes: statSync(pk).size,
-      });
-    });
+      results.push({ ...m, setupMs, proverKeyBytes: statSync(pk).size });
+    }
   } finally {
     rmSync(workDir, { recursive: true, force: true });
   }
