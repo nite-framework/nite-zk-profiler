@@ -1,0 +1,10 @@
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+import "./lib/Math";
+
+export ledger round: Counter;
+
+export circuit bumpBy(x: Uint<16>): [] {
+  round.increment(double(disclose(x) as Uint<32>) as Uint<16>);
+}

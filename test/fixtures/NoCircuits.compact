@@ -1,0 +1,9 @@
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+// Touches neither ledger state nor a witness, so it needs no proof
+// and the compiler emits no ZKIR at all.
+export circuit identity(x: Uint<64>): Uint<64> {
+  return disclose(x);
+}

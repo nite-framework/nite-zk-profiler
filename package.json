@@ -1,0 +1,36 @@
+{
+  "name": "nite-zk-profiler",
+  "version": "0.1.0",
+  "description": "See what a Compact circuit costs to prove, without generating proving keys",
+  "type": "module",
+  "bin": {
+    "nite-zk": "./dist/cli.js"
+  },
+  "main": "./dist/cli.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "midnight",
+    "compact",
+    "zk",
+    "zero-knowledge",
+    "profiler",
+    "proving-cost"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "bun build ./src/cli.ts --outdir dist --target node --format esm && chmod +x dist/cli.js",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run typecheck && bun test && bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}

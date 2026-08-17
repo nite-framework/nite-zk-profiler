@@ -1,0 +1,15 @@
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+export ledger round: Counter;
+export ledger balances: Map<Bytes<32>, Uint<64>>;
+
+export circuit balanceOf(owner: Bytes<32>): Uint<64> {
+  return balances.lookup(disclose(owner));
+}
+
+export circuit register(owner: Bytes<32>, amount: Uint<64>): [] {
+  balances.insert(disclose(owner), disclose(amount));
+  round.increment(1);
+}
