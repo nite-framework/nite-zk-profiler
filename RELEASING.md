@@ -14,38 +14,34 @@ the matching GitHub Release, so the two never drift apart.
    Do this before publishing anything. The `repository` field in package.json
    points at the GitHub repo, and npm renders that link on the package page.
 
-2. **Create an npm access token that covers this package name.**
+2. **Configure trusted publishing on npm.**
 
-   On npmjs.com, under Access Tokens, create a **Granular Access Token** with
-   read and write permission for the `@nite-framework` scope.
+   On npmjs.com, open the package, then **Settings**, then **Trusted Publisher**,
+   and add a GitHub Actions publisher pointing at this repository and
+   `release.yml`.
 
-   The token's scope has to match the package name or the publish is rejected
-   with `E403`. This package is `@nite-framework/nite-zk-profiler`, so a token
-   scoped to `@nite-framework` covers it.
+   The workflow authenticates over OIDC using the `id-token: write` permission
+   it already declares. There is no `NPM_TOKEN`, and no secret to rotate or
+   leak.
 
-   Under the token's **Security settings**, tick **Bypass two-factor
-   authentication (2FA)**. If the account enforces 2FA for publishing and the
-   token does not waive it, npm answers `EOTP` and asks for a one time password,
-   which a CI runner cannot provide.
+   This replaces access tokens, which no longer work for unattended publishing:
+   npm has stopped issuing tokens that bypass 2FA, so a token driven release
+   fails with `EOTP` asking for a one time password that a runner cannot supply.
 
-   Note the ordering trap if the name ever changes: a granular token can only
-   select packages that already exist. Publishing a brand new **unscoped** name
-   therefore needs a token with **All packages** access, because there is no
-   package yet to grant it against. Publishing inside a scope you own avoids
-   that entirely.
+3. **Bootstrapping a brand new package.**
 
-   **This token approach has an expiry date.** npm is restricting tokens that
-   bypass 2FA: account changes from August 2026, and direct publishing from
-   January 2027. The replacement is **trusted publishing**, where npm is
-   configured to trust this repository and workflow directly and authenticates
-   over OIDC, so no `NPM_TOKEN` exists at all. The workflow already grants
-   `id-token: write`, which is the permission trusted publishing needs, so
-   moving over later is a change on npmjs.com rather than a change here.
+   A trusted publisher is configured per package, so the package has to exist
+   before it can be pointed at a repository. The first version therefore has to
+   be published by hand, from a machine where 2FA can be answered:
 
-3. **Add the token to GitHub.**
+   ```text
+   npm login
+   npm publish --access public
+   ```
 
-   Repository Settings, Secrets and variables, Actions, New repository secret.
-   Name it `NPM_TOKEN`.
+   Every release after that goes through the workflow. Only the first one is
+   manual, and only because of that ordering. Note that a manual publish carries
+   no provenance attestation, since provenance comes from the CI identity.
 
 4. **Leave workflow permissions read only.**
 
@@ -120,10 +116,10 @@ step went red. The usual causes, in order:
 
 | Step that fails | Cause | Fix |
 | --- | --- | --- |
-| Publish to npm, `ENEEDAUTH` or `E401` | `NPM_TOKEN` secret missing or expired | Recreate the token and re-add the secret |
-| Publish to npm, `E403` "may not perform that action" | Token scope does not cover the package name | Match the token scope to the name, see setup step 2 |
+| Publish to npm, `ENEEDAUTH` or `E401` | Trusted publisher not configured, or it names a different repository or workflow file | Check the entry on npmjs.com matches this repo and `release.yml` exactly |
+| Publish to npm, `EOTP` "requires a one-time password" | The run fell back to token auth instead of OIDC | Confirm `id-token: write` is present and no `NODE_AUTH_TOKEN` is set |
+| Publish to npm, `E403` "may not perform that action" | Package name outside the scope you own | The name must sit under a scope your account controls |
 | Publish to npm, `E403` on a name you own | That version was already published | Bump to an unused version |
-| Publish to npm, `EOTP` "requires a one-time password" | Account enforces 2FA and the token does not waive it | Tick **Bypass two-factor authentication (2FA)** on the token, see setup step 2 |
 | Publish to npm, provenance error | Repository is private, or `id-token: write` was removed | Provenance needs a public repo |
 | Fail if the tag does not match | Tag was created by hand | Use `npm version`, which tags for you |
 | Create the GitHub Release | `contents: write` missing from the workflow | Restore the `permissions` block |

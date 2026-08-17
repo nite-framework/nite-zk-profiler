@@ -24,6 +24,12 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
+      # Trusted publishing needs npm 11.5.1 or later. Node 24 already ships a
+      # new enough npm, but pinning to latest keeps this from silently
+      # regressing if the runner image moves backwards.
+      - name: Ensure npm supports trusted publishing
+        run: npm install -g npm@latest
+
       - run: npm ci
 
       - name: Fail if the tag does not match package.json
@@ -39,10 +45,12 @@ jobs:
       - run: npm test
       - run: npm run build
 
+      # No NODE_AUTH_TOKEN. npm is configured to trust this repository and this
+      # workflow file, and authenticates over OIDC using the id-token permission
+      # granted above. Nothing secret is involved, and provenance comes from the
+      # same identity.
       - name: Publish to npm
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create the GitHub Release
         uses: softprops/action-gh-release@v2
