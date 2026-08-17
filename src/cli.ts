@@ -9,12 +9,14 @@ import {
   readBudget,
   writeBudget,
 } from "./budget.ts";
+import { cacheKey, readCache, writeCache } from "./cache.ts";
 import { setColorEnabled } from "./colors.ts";
+import { Progress } from "./progress.ts";
 import { compileSkipZk } from "./compile.ts";
 import { type DeepByCircuit, checkJson, formatCheck, formatProfile, profileJson } from "./report.ts";
 import { measureDeep } from "./deep.ts";
 import { ProfilerError } from "./errors.ts";
-import { measure } from "./measure.ts";
+import { measureParallel } from "./measure.ts";
 import { SUPPORTED_RANGES, resolveToolchain } from "./toolchain.ts";
 
 const USAGE = `nite-zk - see what a Compact circuit costs to prove
@@ -34,6 +36,7 @@ Options:
   --budget <file>              Budget path (default: ${DEFAULT_BUDGET_PATH})
   --strict                     check: fail on circuits missing from the budget
   --no-color                   Plain output (also honours NO_COLOR)
+  --no-cache                   Ignore cached measurements for this run
   +VERSION                     Pin the Compact toolchain, e.g. +0.31.1
   -h, --help                   Show this message
   -v, --version                Show the tool version
@@ -48,6 +51,7 @@ interface Options {
   strict: boolean;
   deep: boolean;
   noColor: boolean;
+  noCache: boolean;
   out?: string;
   budget: string;
   versionArg?: string;
@@ -61,6 +65,7 @@ export function parseArgs(argv: string[]): Options {
     strict: false,
     deep: false,
     noColor: false,
+    noCache: false,
     budget: DEFAULT_BUDGET_PATH,
     help: false,
     version: false,
@@ -73,6 +78,7 @@ export function parseArgs(argv: string[]): Options {
     else if (arg === "--strict") opts.strict = true;
     else if (arg === "--deep") opts.deep = true;
     else if (arg === "--no-color") opts.noColor = true;
+    else if (arg === "--no-cache") opts.noCache = true;
     else if (arg === "-h" || arg === "--help") opts.help = true;
     else if (arg === "-v" || arg === "--version") opts.version = true;
     else if (arg === "--out") opts.out = argv[++i];
@@ -86,32 +92,48 @@ export function parseArgs(argv: string[]): Options {
 }
 
 /** Compile and measure. Shared by all three commands. */
-function profileSource(source: string, opts: Options) {
+async function profileSource(source: string, opts: Options) {
   // Monotonic, so a wall clock adjustment mid run cannot produce a negative
   // or wildly wrong duration.
   const started = performance.now();
+  const quiet = opts.json;
+  const progress = new Progress(!quiet);
+
+  progress.start("resolving toolchain");
   const toolchain = resolveToolchain(opts.versionArg);
+
+  progress.update("compiling without proving keys");
   const compiled = compileSkipZk(source, toolchain, opts.out);
 
   try {
-    const measurements = measure(compiled.zkirDir, toolchain, source);
+    // The compile is the cheap half, so it always runs and its output keys the
+    // cache. Identical IR cannot produce different constraint counts.
+    const key = opts.noCache ? undefined : cacheKey(compiled.zkirDir, toolchain);
+    let measurements = key ? readCache(key) : undefined;
+    const cached = measurements !== undefined;
+
+    if (!measurements) {
+      progress.update("measuring circuits");
+      measurements = await measureParallel(compiled.zkirDir, toolchain, source, (d, t) =>
+        progress.update(`measuring circuits  ${d}/${t}`),
+      );
+      if (key) writeCache(key, measurements);
+    }
+
     const costs = analyze(measurements);
 
     let deep: DeepByCircuit | undefined;
     if (opts.deep) {
-      if (!opts.json) {
-        process.stderr.write(
-          `Generating proving keys for ${measurements.length} circuits. This is the slow path.\n`,
-        );
-      }
-      const results = measureDeep(measurements, compiled.zkirDir, toolchain, (c, i, n) => {
-        if (!opts.json) process.stderr.write(`  [${i + 1}/${n}] ${c}\n`);
-      });
+      const results = measureDeep(measurements, compiled.zkirDir, toolchain, (c, i, n) =>
+        progress.update(`generating proving keys  ${i + 1}/${n}  ${c}`),
+      );
       deep = new Map(results.map((r) => [r.circuit, r]));
     }
 
-    return { costs, toolchain, deep, elapsedMs: performance.now() - started };
+    progress.stop();
+    return { costs, toolchain, deep, cached, elapsedMs: performance.now() - started };
   } finally {
+    progress.stop();
     compiled.cleanup();
   }
 }
@@ -140,7 +162,7 @@ function resolveCheckSource(opts: Options, recorded: string | undefined): string
   return isAbsolute(recorded) ? recorded : resolve(dirname(resolve(opts.budget)), recorded);
 }
 
-export function run(argv: string[]): number {
+export async function run(argv: string[]): Promise<number> {
   const opts = parseArgs(argv);
 
   if (opts.noColor || opts.json) setColorEnabled(false);
@@ -172,19 +194,19 @@ export function run(argv: string[]): number {
     // on a compile, and so it can supply the source path.
     const budget = readBudget(opts.budget);
     const source = resolveCheckSource(opts, budget.source);
-    const { costs } = profileSource(source, opts);
+    const { costs } = await profileSource(source, opts);
     const result = check(costs, budget, opts.strict);
     process.stdout.write(opts.json ? `${checkJson(result)}\n` : formatCheck(result));
     return result.failed ? 1 : 0;
   }
 
-  const { costs, toolchain, deep, elapsedMs } = profileSource(opts.source!, opts);
+  const { costs, toolchain, deep, cached, elapsedMs } = await profileSource(opts.source!, opts);
 
   if (opts.command === "profile") {
     process.stdout.write(
       opts.json
         ? `${profileJson(costs, toolchain, deep)}\n`
-        : formatProfile(costs, toolchain, elapsedMs, deep),
+        : formatProfile(costs, toolchain, elapsedMs, deep, cached),
     );
     return 0;
   }
@@ -204,9 +226,9 @@ export function run(argv: string[]): number {
   return 0;
 }
 
-export function main(argv: string[]): number {
+export async function main(argv: string[]): Promise<number> {
   try {
-    return run(argv);
+    return await run(argv);
   } catch (e) {
     if (e instanceof ProfilerError) {
       process.stderr.write(`\nerror: ${e.message}\n`);
@@ -224,5 +246,5 @@ const invokedDirectly =
   /(?:^|[\\/])(?:cli\.(?:ts|js)|nite-zk)$/.test(process.argv[1]);
 
 if (invokedDirectly) {
-  process.exit(main(process.argv.slice(2)));
+  main(process.argv.slice(2)).then((code) => process.exit(code));
 }

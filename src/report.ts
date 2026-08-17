@@ -34,6 +34,7 @@ export function formatProfile(
   toolchain: Toolchain,
   elapsedMs: number,
   deep?: DeepByCircuit,
+  cached = false,
 ): string {
   const cells = costs.map((c) => {
     const paint = costColor(c.relativeCost);
@@ -81,7 +82,7 @@ export function formatProfile(
   lines.push(
     gray(
       `  ${costs.length} ${plural}, toolchain ${toolchain.version}, ` +
-        `${toolchain.zkirVersion}, ${(elapsedMs / 1000).toFixed(1)}s`,
+        `${toolchain.zkirVersion}, ${(elapsedMs / 1000).toFixed(1)}s${cached ? " (cached)" : ""}`,
     ),
   );
 
