@@ -1,0 +1,54 @@
+name: Release
+
+# Publishing is driven by the tag that `bun pm version` creates, so the npm
+# release and the GitHub release always describe the same commit.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # npm provenance attestation
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history, so release notes can diff against the last tag
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # npm itself does the publishing, because it supports --provenance.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - run: bun install --frozen-lockfile
+
+      - name: Fail if the tag does not match package.json
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(bun pm pkg get version | tr -d '"')"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG"
+            exit 1
+          fi
+
+      - run: bun run typecheck
+      - run: bun test
+      - run: bun run build
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
