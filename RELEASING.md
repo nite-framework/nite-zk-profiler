@@ -23,11 +23,24 @@ the matching GitHub Release, so the two never drift apart.
    with `E403`. This package is `@nite-framework/nite-zk-profiler`, so a token
    scoped to `@nite-framework` covers it.
 
+   Under the token's **Security settings**, tick **Bypass two-factor
+   authentication (2FA)**. If the account enforces 2FA for publishing and the
+   token does not waive it, npm answers `EOTP` and asks for a one time password,
+   which a CI runner cannot provide.
+
    Note the ordering trap if the name ever changes: a granular token can only
    select packages that already exist. Publishing a brand new **unscoped** name
    therefore needs a token with **All packages** access, because there is no
    package yet to grant it against. Publishing inside a scope you own avoids
    that entirely.
+
+   **This token approach has an expiry date.** npm is restricting tokens that
+   bypass 2FA: account changes from August 2026, and direct publishing from
+   January 2027. The replacement is **trusted publishing**, where npm is
+   configured to trust this repository and workflow directly and authenticates
+   over OIDC, so no `NPM_TOKEN` exists at all. The workflow already grants
+   `id-token: write`, which is the permission trusted publishing needs, so
+   moving over later is a change on npmjs.com rather than a change here.
 
 3. **Add the token to GitHub.**
 
@@ -110,6 +123,7 @@ step went red. The usual causes, in order:
 | Publish to npm, `ENEEDAUTH` or `E401` | `NPM_TOKEN` secret missing or expired | Recreate the token and re-add the secret |
 | Publish to npm, `E403` "may not perform that action" | Token scope does not cover the package name | Match the token scope to the name, see setup step 2 |
 | Publish to npm, `E403` on a name you own | That version was already published | Bump to an unused version |
+| Publish to npm, `EOTP` "requires a one-time password" | Account enforces 2FA and the token does not waive it | Tick **Bypass two-factor authentication (2FA)** on the token, see setup step 2 |
 | Publish to npm, provenance error | Repository is private, or `id-token: write` was removed | Provenance needs a public repo |
 | Fail if the tag does not match | Tag was created by hand | Use `npm version`, which tags for you |
 | Create the GitHub Release | `contents: write` missing from the workflow | Restore the `permissions` block |
@@ -117,8 +131,14 @@ step went red. The usual causes, in order:
 Repository level workflow permissions are **not** a likely cause, because the
 workflow grants itself what it needs.
 
-A tag that already failed can be reused. Delete it locally and remotely, then
-push it again once the cause is fixed:
+**If the publish step failed, do not bump the version.** Nothing reached the
+registry, so that version number is still free. Fix the cause, then use
+**Re-run failed jobs** on the failed run in the Actions tab. The tag already
+exists and the workflow will replay against it. Bumping instead burns a version
+number for no reason.
+
+A tag that already failed can also be reused outright. Delete it locally and
+remotely, then push it again once the cause is fixed:
 
 ```text
 git tag -d v0.1.2
