@@ -23,6 +23,17 @@
     "proving-cost"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nite-framework/nite-zk-profiler.git"
+  },
+  "homepage": "https://github.com/nite-framework/nite-zk-profiler#readme",
+  "bugs": {
+    "url": "https://github.com/nite-framework/nite-zk-profiler/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "bun build ./src/cli.ts --outdir dist --target node --format esm && chmod +x dist/cli.js",
     "test": "bun test",
