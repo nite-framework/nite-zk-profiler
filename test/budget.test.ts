@@ -2,35 +2,68 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { analyze } from "../src/analyze.ts";
-import { type Budget, budgetFrom, check } from "../src/budget.ts";
+import { type Budget, budgetFrom, budgetSources, check } from "../src/budget.ts";
 
 const costs = analyze([
   { circuit: "cheap", k: 9, rows: 305 },
   { circuit: "pricey", k: 13, rows: 4189 },
 ]);
 
+const measured = [{ source: "src/Main.compact", costs }];
+
 const budget: Budget = {
   toolchain: "0.31.x",
-  circuits: { cheap: { maxK: 9 }, pricey: { maxK: 13 } },
+  contracts: {
+    "src/Main.compact": {
+      circuits: { cheap: { maxK: 9 }, pricey: { maxK: 13 } },
+    },
+  },
 };
+
+const withCeilings = (cheap: number, pricey: number): Budget => ({
+  toolchain: "0.31.x",
+  contracts: {
+    "src/Main.compact": { circuits: { cheap: { maxK: cheap }, pricey: { maxK: pricey } } },
+  },
+});
 
 describe("budgetFrom", () => {
   it("grants each circuit exactly its current k", () => {
-    assert.deepEqual(budgetFrom(costs, "0.31.x").circuits, {
-      cheap: { maxK: 9 },
-      pricey: { maxK: 13 },
-    });
+    const b = budgetFrom(measured, "0.31.x");
+    assert.equal(b.contracts["src/Main.compact"]!.circuits.cheap!.maxK, 9);
+    assert.equal(b.contracts["src/Main.compact"]!.circuits.pricey!.maxK, 13);
   });
 
-  // Recorded so `check` can run with no arguments, which is what CI wants.
-  it("records the contract it describes", () => {
-    assert.equal(budgetFrom(costs, "0.31.x", "src/Main.compact").source, "src/Main.compact");
+  // Informational, so a reviewer can read the diff without running the tool.
+  it("records rows, capacity and relative cost alongside the ceiling", () => {
+    const entry = budgetFrom(measured, "0.31.x").contracts["src/Main.compact"]!.circuits.pricey!;
+    assert.equal(entry.rows, 4189);
+    assert.equal(entry.capacity, 8192);
+    assert.equal(entry.relativeCost, 16);
+  });
+
+  it("records which tool and toolchain produced it", () => {
+    const b = budgetFrom(measured, "0.31.x");
+    assert.match(b.tool!, /^nite-zk-profiler /);
+    assert.equal(b.toolchain, "0.31.x");
+    assert.ok(b.generated);
+  });
+
+  it("keeps several contracts in one file", () => {
+    const b = budgetFrom(
+      [
+        { source: "a/Main.compact", costs },
+        { source: "b/Other.compact", costs },
+      ],
+      "0.31.x",
+    );
+    assert.deepEqual(budgetSources(b), ["a/Main.compact", "b/Other.compact"]);
   });
 });
 
 describe("check", () => {
   it("passes when every circuit sits at its ceiling", () => {
-    const result = check(costs, budget, false);
+    const result = check(measured, budget, false);
     assert.equal(result.failed, false);
     assert.deepEqual(
       result.rows.map((r) => r.status),
@@ -39,21 +72,13 @@ describe("check", () => {
   });
 
   it("passes when a circuit is under its ceiling", () => {
-    const generous: Budget = {
-      toolchain: "0.31.x",
-      circuits: { cheap: { maxK: 10 }, pricey: { maxK: 13 } },
-    };
-    const result = check(costs, generous, false);
+    const result = check(measured, withCeilings(10, 13), false);
     assert.equal(result.failed, false);
     assert.equal(result.rows[0]!.status, "under");
   });
 
   it("fails only when a circuit exceeds its declared ceiling", () => {
-    const tight: Budget = {
-      toolchain: "0.31.x",
-      circuits: { cheap: { maxK: 9 }, pricey: { maxK: 12 } },
-    };
-    const result = check(costs, tight, false);
+    const result = check(measured, withCeilings(9, 12), false);
     assert.equal(result.failed, true);
     assert.equal(result.rows.find((r) => r.circuit === "pricey")!.status, "over");
   });
@@ -61,32 +86,43 @@ describe("check", () => {
   // A deliberate cost increase is not a regression. Raising the ceiling in the
   // same commit is the intended workflow, so it must pass.
   it("passes once a raised ceiling is committed", () => {
-    const raised: Budget = {
-      toolchain: "0.31.x",
-      circuits: { cheap: { maxK: 9 }, pricey: { maxK: 14 } },
-    };
-    assert.equal(check(costs, raised, false).failed, false);
+    assert.equal(check(measured, withCeilings(9, 14), false).failed, false);
   });
 
   it("warns but passes on an undeclared circuit by default", () => {
-    const partial: Budget = { toolchain: "0.31.x", circuits: { cheap: { maxK: 9 } } };
-    const result = check(costs, partial, false);
+    const partial: Budget = {
+      toolchain: "0.31.x",
+      contracts: { "src/Main.compact": { circuits: { cheap: { maxK: 9 } } } },
+    };
+    const result = check(measured, partial, false);
     assert.equal(result.failed, false);
     assert.equal(result.rows.find((r) => r.circuit === "pricey")!.status, "undeclared");
   });
 
   it("fails on an undeclared circuit under --strict", () => {
-    const partial: Budget = { toolchain: "0.31.x", circuits: { cheap: { maxK: 9 } } };
-    assert.equal(check(costs, partial, true).failed, true);
+    const partial: Budget = {
+      toolchain: "0.31.x",
+      contracts: { "src/Main.compact": { circuits: { cheap: { maxK: 9 } } } },
+    };
+    assert.equal(check(measured, partial, true).failed, true);
   });
 
   it("reports a removed circuit as stale without failing", () => {
     const extra: Budget = {
       toolchain: "0.31.x",
-      circuits: { ...budget.circuits, gone: { maxK: 9 } },
+      contracts: {
+        "src/Main.compact": {
+          circuits: { cheap: { maxK: 9 }, pricey: { maxK: 13 }, gone: { maxK: 9 } },
+        },
+      },
     };
-    const result = check(costs, extra, true);
+    const result = check(measured, extra, true);
     assert.equal(result.failed, false);
     assert.equal(result.rows.find((r) => r.circuit === "gone")!.status, "stale");
+  });
+
+  it("tags each row with the contract it came from", () => {
+    const result = check(measured, budget, false);
+    assert.ok(result.rows.every((r) => r.contract === "src/Main.compact"));
   });
 });

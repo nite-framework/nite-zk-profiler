@@ -10,7 +10,7 @@ describe("parseArgs", () => {
   it("reads a command and source", () => {
     const opts = parseArgs(["profile", "Sample.compact"]);
     assert.equal(opts.command, "profile");
-    assert.equal(opts.source, "Sample.compact");
+    assert.deepEqual(opts.sources, ["Sample.compact"]);
   });
 
   it("defaults the budget path", () => {
@@ -20,7 +20,7 @@ describe("parseArgs", () => {
   it("takes flags in any position", () => {
     const opts = parseArgs(["--json", "profile", "--strict", "S.compact"]);
     assert.equal(opts.command, "profile");
-    assert.equal(opts.source, "S.compact");
+    assert.deepEqual(opts.sources, ["S.compact"]);
     assert.equal(opts.json, true);
     assert.equal(opts.strict, true);
   });
@@ -29,7 +29,7 @@ describe("parseArgs", () => {
     const opts = parseArgs(["profile", "+0.31.1", "S.compact"]);
     assert.equal(opts.versionArg, "+0.31.1");
     assert.equal(opts.command, "profile");
-    assert.equal(opts.source, "S.compact");
+    assert.deepEqual(opts.sources, ["S.compact"]);
   });
 
   it("parses --deep and --no-color", () => {
@@ -41,7 +41,29 @@ describe("parseArgs", () => {
   it("allows check with no source, which the budget can supply", () => {
     const opts = parseArgs(["check"]);
     assert.equal(opts.command, "check");
-    assert.equal(opts.source, undefined);
+    assert.deepEqual(opts.sources, []);
+  });
+
+  it("collects several sources for a monorepo", () => {
+    const opts = parseArgs(["profile", "a/A.compact", "b/B.compact", "c/C.compact"]);
+    assert.deepEqual(opts.sources, ["a/A.compact", "b/B.compact", "c/C.compact"]);
+  });
+
+  it("takes the ref first for diff, then the source", () => {
+    const opts = parseArgs(["diff", "main", "src/Main.compact"]);
+    assert.equal(opts.command, "diff");
+    assert.equal(opts.ref, "main");
+    assert.deepEqual(opts.sources, ["src/Main.compact"]);
+  });
+
+  it("parses calibration arguments", () => {
+    const opts = parseArgs(["calibrate", "--observed", "9000", "--at-k", "16"]);
+    assert.equal(opts.observedMs, 9000);
+    assert.equal(opts.atK, 16);
+  });
+
+  it("parses --estimate", () => {
+    assert.equal(parseArgs(["profile", "S.compact", "--estimate"]).estimate, true);
   });
 
   it("reads --out and --budget values", () => {

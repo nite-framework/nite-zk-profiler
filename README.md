@@ -370,22 +370,79 @@ Anything outside this range is rejected with a clear error naming the version fo
 ## Command line surface
 
 ```text
-nite-zk profile <source>     Report rows, k and relative cost per circuit
-nite-zk save <source>        Write zk-budget.json from current measurements
-nite-zk check [<source>]     Compare against zk-budget.json
+nite-zk profile <source...>   Report rows, k and relative cost per circuit
+nite-zk save <source...>      Write zk-budget.json from current measurements
+nite-zk check [<source...>]   Compare against zk-budget.json
+nite-zk diff <ref> [<source>] Compare a contract against a git ref
+nite-zk calibrate --observed <ms> --at-k <k>
+                              Anchor proving estimates to a real proof
 
-  --deep                     Also generate real proving keys, and report
-                             measured setup time and prover key size
-  --json                     Machine readable output
-  --out <dir>                Compile into a specific directory
-  --budget <file>            Use a different baseline path
-  --strict                   check: fail on circuits missing from the budget
-  --no-color                 Plain output (NO_COLOR is honoured too)
-  +VERSION                   Pin the Compact toolchain, e.g. +0.31.1
+  --estimate                  Show modelled proving time per circuit
+  --deep                      Also generate real proving keys, and report
+                              measured setup time and prover key size
+  --json                      Machine readable output
+  --out <dir>                 Compile into a specific directory
+  --budget <file>             Use a different baseline path
+  --strict                    check: fail on circuits missing from the budget
+  --no-color                  Plain output (NO_COLOR is honoured too)
+  --no-cache                  Ignore cached measurements for this run
+  +VERSION                    Pin the Compact toolchain, e.g. +0.31.1
 ```
 
-`save` records which contract the budget describes, so `check` needs no
-arguments afterwards. That is what makes it a one line CI step.
+### Several contracts at once
+
+Pass more than one entry point, and one budget file covers them all:
+
+```text
+$ nite-zk save packages/pool/src/lending.compact packages/mint/src/mint.compact
+Wrote zk-budget.json: 2 contracts, 16 circuits
+```
+
+`check` then reads every contract back out of the budget, so CI stays one step
+whether the repository holds one contract or ten.
+
+### Comparing against a branch
+
+```text
+$ nite-zk diff main
+
+  transferFunds  k  15 ->  16   +1, about 2x more expensive
+  proveMembership k 16 ->  16   unchanged
+  newHelper      k   - ->   9   new circuit
+
+  1 circuit more expensive than main
+```
+
+The ref is exported with `git archive` into a temporary directory, so the
+working tree and the index are never touched. Exits nonzero when a circuit that
+already existed got more expensive, which makes it usable as a pull request
+check without committing a budget file first.
+
+### Estimated proving time
+
+`--estimate` models proving time as `time = rate * 2^k`, since a Halo2 proof is
+dominated by work over the full `2^k` domain.
+
+The rate is machine specific, so the shipped default is only an order of
+magnitude. Time one real proof and record it, and every estimate becomes
+anchored to your own prover:
+
+```text
+$ nite-zk calibrate --observed 9000 --at-k 16
+Calibrated: 0.1373 ms per domain row, from 9000ms at k=16.
+```
+
+Two limits worth stating plainly. Proving delegated to a remote proof server is
+often dominated by network round trip and server load rather than by circuit
+size, and no model of `k` can see that. And the same gate degree effect that
+makes key size unpredictable, described below, puts a factor of about two around
+any figure derived from `k` alone. Treat it as a ratio you can reason with, not
+a stopwatch.
+
+`save` records which contracts the budget describes, so `check` needs no
+arguments afterwards. That is what makes it a one line CI step. It also records
+rows, capacity and relative cost per circuit, so a reviewer reading the diff can
+see what changed without running anything. Only `maxK` is enforced.
 
 ### Measuring the real thing
 
@@ -408,11 +465,17 @@ carries a 9.5 MB key against 14 KB at k=5.
 This mode is slow by design, since it does the work `--skip-zk` exists to avoid.
 Use it when choosing between designs, not in an edit loop.
 
-**On estimating proving time.** The tool does not print a predicted proving
-time in seconds, because it cannot measure one without generating a proof, and
-a number extrapolated from someone else's hardware would be fiction dressed as
-data. What it gives instead is the `cost` column, which is the ratio proving
-time actually follows, and `--deep` for measured setup cost on your own machine.
+**Why key size is measured rather than predicted.** It looks predictable from
+`k`: three structurally unrelated circuits at k=13 agreed within 0.11%, and a
+synthetic k=15 circuit matched a production one to 0.08%. It does not hold. At
+k=16 a production circuit produced 19,524,757 bytes while a synthetic one
+produced 38,513,181, a factor of two apart, with identical verifier key sizes.
+
+The likely cause is the extended evaluation domain, which Halo2 sizes by maximum
+gate degree, and which `mock-compile` does not report. From `k` alone there is
+no way to tell which case a circuit is in, and a figure that is exact at one `k`
+and twice wrong at the next is worse than no figure. So key size comes only from
+`--deep`, where it is measured.
 
 Designed to work as a single CI step:
 

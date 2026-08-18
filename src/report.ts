@@ -1,16 +1,9 @@
 import type { CircuitCost } from "./analyze.ts";
-import type { CheckResult, Status } from "./budget.ts";
-import {
-  bold,
-  costColor,
-  dim,
-  gray,
-  green,
-  red,
-  visibleLength,
-  yellow,
-} from "./colors.ts";
+import type { CheckResult, ContractCosts, Status } from "./budget.ts";
+import { bold, costColor, dim, gray, green, red, visibleLength, yellow } from "./colors.ts";
 import { type DeepMeasurement, formatBytes, formatMs } from "./deep.ts";
+import type { DiffResult } from "./diff.ts";
+import { type Calibration, estimateProvingMs, formatDuration } from "./estimate.ts";
 import type { Toolchain } from "./toolchain.ts";
 
 /** Pad accounting for ANSI escapes, which do not occupy screen columns. */
@@ -22,20 +15,20 @@ function padLeft(text: string, width: number): string {
   return " ".repeat(Math.max(0, width - visibleLength(text))) + text;
 }
 
-function costLabel(relative: number): string {
-  return `${relative}x`;
-}
-
 export type DeepByCircuit = Map<string, DeepMeasurement>;
 
-/** Human readable per circuit cost table. */
-export function formatProfile(
-  costs: CircuitCost[],
-  toolchain: Toolchain,
-  elapsedMs: number,
-  deep?: DeepByCircuit,
-  cached = false,
-): string {
+export interface ProfileOptions {
+  toolchain: Toolchain;
+  elapsedMs: number;
+  deep?: DeepByCircuit;
+  cached?: boolean;
+  calibration?: Calibration;
+  showEstimate?: boolean;
+}
+
+function table(costs: CircuitCost[], opts: ProfileOptions, indent: string): string[] {
+  const { deep, calibration, showEstimate } = opts;
+
   const cells = costs.map((c) => {
     const paint = costColor(c.relativeCost);
     const d = deep?.get(c.circuit);
@@ -44,7 +37,8 @@ export function formatProfile(
       rows: String(c.rows),
       k: paint(String(c.k)),
       capacity: String(c.capacity),
-      cost: paint(costLabel(c.relativeCost)),
+      cost: paint(`${c.relativeCost}x`),
+      prove: showEstimate ? `~${formatDuration(estimateProvingMs(c.k, calibration).ms)}` : "",
       setup: d ? formatMs(d.setupMs) : "",
       key: d ? formatBytes(d.proverKeyBytes) : "",
     };
@@ -53,51 +47,91 @@ export function formatProfile(
   const width = (header: string, get: (c: (typeof cells)[number]) => string) =>
     Math.max(header.length, ...cells.map((c) => visibleLength(get(c))));
 
-  const wName = width("circuit", (c) => c.circuit);
-  const wRows = width("rows", (c) => c.rows);
-  const wK = width("k", (c) => c.k);
-  const wCap = width("capacity", (c) => c.capacity);
-  const wCost = width("cost", (c) => c.cost);
-  const wSetup = deep ? width("setup", (c) => c.setup) : 0;
-  const wKey = deep ? width("prover key", (c) => c.key) : 0;
+  const w = {
+    name: width("circuit", (c) => c.circuit),
+    rows: width("rows", (c) => c.rows),
+    k: width("k", (c) => c.k),
+    cap: width("capacity", (c) => c.capacity),
+    cost: width("cost", (c) => c.cost),
+    prove: showEstimate ? width("est. prove", (c) => c.prove) : 0,
+    setup: deep ? width("setup", (c) => c.setup) : 0,
+    key: deep ? width("prover key", (c) => c.key) : 0,
+  };
 
-  const lines: string[] = [""];
+  const head = (): string => {
+    let h =
+      `${indent}${pad("circuit", w.name)}  ${padLeft("rows", w.rows)}  ${padLeft("k", w.k)}  ` +
+      `${padLeft("capacity", w.cap)}  ${padLeft("cost", w.cost)}`;
+    if (showEstimate) h += `  ${padLeft("est. prove", w.prove)}`;
+    if (deep) h += `  ${padLeft("setup", w.setup)}  ${padLeft("prover key", w.key)}`;
+    return dim(h);
+  };
 
-  let header =
-    `  ${pad("circuit", wName)}  ${padLeft("rows", wRows)}  ${padLeft("k", wK)}  ` +
-    `${padLeft("capacity", wCap)}  ${padLeft("cost", wCost)}`;
-  if (deep) header += `  ${padLeft("setup", wSetup)}  ${padLeft("prover key", wKey)}`;
-  lines.push(dim(header));
-
+  const lines = [head()];
   for (const c of cells) {
     let line =
-      `  ${pad(c.circuit, wName)}  ${padLeft(c.rows, wRows)}  ${padLeft(c.k, wK)}  ` +
-      `${padLeft(c.capacity, wCap)}  ${padLeft(c.cost, wCost)}`;
-    if (deep) line += `  ${padLeft(c.setup, wSetup)}  ${padLeft(c.key, wKey)}`;
+      `${indent}${pad(c.circuit, w.name)}  ${padLeft(c.rows, w.rows)}  ${padLeft(c.k, w.k)}  ` +
+      `${padLeft(c.capacity, w.cap)}  ${padLeft(c.cost, w.cost)}`;
+    if (showEstimate) line += `  ${padLeft(c.prove, w.prove)}`;
+    if (deep) line += `  ${padLeft(c.setup, w.setup)}  ${padLeft(c.key, w.key)}`;
     lines.push(line);
   }
+  return lines;
+}
 
-  const plural = costs.length === 1 ? "circuit" : "circuits";
-  lines.push("");
+/** Per circuit cost table, one block per contract. */
+export function formatProfile(contracts: ContractCosts[], opts: ProfileOptions): string {
+  const lines: string[] = [""];
+  const many = contracts.length > 1;
+
+  for (const { source, costs } of contracts) {
+    if (many) {
+      lines.push(bold(`  ${source}`));
+      lines.push(...table(costs, opts, "    "));
+      lines.push("");
+    } else {
+      lines.push(...table(costs, opts, "  "));
+      lines.push("");
+    }
+  }
+
+  const all = contracts.flatMap((c) => c.costs);
+  const circuits = all.length;
+  const suffix = opts.cached ? " (cached)" : "";
+  const contractNote = many ? `${contracts.length} contracts, ` : "";
+
   lines.push(
     gray(
-      `  ${costs.length} ${plural}, toolchain ${toolchain.version}, ` +
-        `${toolchain.zkirVersion}, ${(elapsedMs / 1000).toFixed(1)}s${cached ? " (cached)" : ""}`,
+      `  ${contractNote}${circuits} circuit${circuits === 1 ? "" : "s"}, ` +
+        `toolchain ${opts.toolchain.version}, ${opts.toolchain.zkirVersion}, ` +
+        `${(opts.elapsedMs / 1000).toFixed(1)}s${suffix}`,
     ),
   );
 
-  const worst = costs.reduce((a, b) => (b.k > a.k ? b : a), costs[0]!);
-  const cheapest = Math.min(...costs.map((c) => c.k));
-  if (worst.k > cheapest) {
+  if (all.length > 0) {
+    const worst = all.reduce((a, b) => (b.k > a.k ? b : a), all[0]!);
+    const cheapest = Math.min(...all.map((c) => c.k));
+    if (worst.k > cheapest) {
+      lines.push(
+        gray(
+          `  ${bold(worst.circuit)} dominates at k=${worst.k}, ` +
+            `${2 ** (worst.k - cheapest)}x the cheapest circuit here.`,
+        ),
+      );
+    }
+  }
+
+  if (opts.showEstimate) {
     lines.push(
       gray(
-        `  ${bold(worst.circuit)} dominates at k=${worst.k}, ` +
-          `${worst.relativeCost}x the cheapest circuit here.`,
+        opts.calibration
+          ? `  est. prove is modelled as 2^k, calibrated from an observed ${formatDuration(opts.calibration.observedMs)} proof at k=${opts.calibration.observedK}.`
+          : "  est. prove is modelled as 2^k on an uncalibrated default. Run `nite-zk calibrate` to anchor it.",
       ),
     );
   }
-  lines.push("");
 
+  lines.push("");
   return lines.join("\n");
 }
 
@@ -112,34 +146,39 @@ const STATUS_NOTE: Record<Status, (row: { k?: number; maxK?: number }) => string
   stale: () => dim("no longer in contract"),
 };
 
-/** Human readable budget comparison. */
+/** Budget comparison, grouped by contract when there is more than one. */
 export function formatCheck(result: CheckResult): string {
-  const wName = Math.max(7, ...result.rows.map((r) => r.circuit.length));
+  const contracts = [...new Set(result.rows.map((r) => r.contract))];
+  const many = contracts.length > 1;
   const lines: string[] = [""];
 
-  for (const row of result.rows) {
-    const k = row.k === undefined ? "  -" : padLeft(String(row.k), 3);
-    const maxK = row.maxK === undefined ? "  -" : padLeft(String(row.maxK), 3);
-    const paint = row.status === "over" ? red : (t: string) => t;
-    lines.push(
-      `  ${pad(paint(row.circuit), wName)}  k ${k}   ${dim("budget")} ${maxK}   ` +
-        STATUS_NOTE[row.status](row),
-    );
+  for (const contract of contracts) {
+    const rows = result.rows.filter((r) => r.contract === contract);
+    const indent = many ? "    " : "  ";
+    if (many) lines.push(bold(`  ${contract}`));
+
+    const wName = Math.max(7, ...rows.map((r) => r.circuit.length));
+    for (const row of rows) {
+      const k = row.k === undefined ? "  -" : padLeft(String(row.k), 3);
+      const maxK = row.maxK === undefined ? "  -" : padLeft(String(row.maxK), 3);
+      const paint = row.status === "over" ? red : (t: string) => t;
+      lines.push(
+        `${indent}${pad(paint(row.circuit), wName)}  k ${k}   ${dim("budget")} ${maxK}   ` +
+          STATUS_NOTE[row.status](row),
+      );
+    }
+    if (many) lines.push("");
   }
 
   const over = result.rows.filter((r) => r.status === "over").length;
   const undeclared = result.rows.filter((r) => r.status === "undeclared").length;
 
-  lines.push("");
+  if (!many) lines.push("");
   if (over > 0) {
     lines.push(red(bold(`  FAIL: ${over} circuit${over === 1 ? "" : "s"} over budget`)));
   } else if (result.failed) {
     lines.push(
-      red(
-        bold(
-          `  FAIL: ${undeclared} circuit${undeclared === 1 ? "" : "s"} not declared in the budget (--strict)`,
-        ),
-      ),
+      red(bold(`  FAIL: ${undeclared} circuit${undeclared === 1 ? "" : "s"} not declared (--strict)`)),
     );
   } else {
     lines.push(green(bold("  OK: every circuit within budget")));
@@ -149,21 +188,62 @@ export function formatCheck(result: CheckResult): string {
   return lines.join("\n");
 }
 
-export function profileJson(
-  costs: CircuitCost[],
-  toolchain: Toolchain,
-  deep?: DeepByCircuit,
-): string {
+/** Comparison against a git ref. */
+export function formatDiff(result: DiffResult): string {
+  const lines: string[] = [""];
+  const wName = Math.max(7, ...result.rows.map((r) => r.circuit.length));
+
+  for (const row of result.rows) {
+    const before = row.before === undefined ? dim("  -") : padLeft(String(row.before), 3);
+    const after = row.after === undefined ? dim("  -") : padLeft(String(row.after), 3);
+
+    let note: string;
+    if (row.before === undefined) note = yellow("new circuit");
+    else if (row.after === undefined) note = dim("removed");
+    else if (row.after > row.before)
+      note = red(`+${row.after - row.before}, about ${2 ** (row.after - row.before)}x more expensive`);
+    else if (row.after < row.before)
+      note = green(`${row.after - row.before}, about ${2 ** (row.before - row.after)}x cheaper`);
+    else note = dim("unchanged");
+
+    lines.push(`  ${pad(row.circuit, wName)}  k ${before} ${dim("->")} ${after}   ${note}`);
+  }
+
+  const worse = result.rows.filter(
+    (r) => r.before !== undefined && r.after !== undefined && r.after > r.before,
+  ).length;
+
+  lines.push("");
+  lines.push(
+    worse > 0
+      ? red(bold(`  ${worse} circuit${worse === 1 ? "" : "s"} more expensive than ${result.ref}`))
+      : green(bold(`  nothing more expensive than ${result.ref}`)),
+  );
+  lines.push("");
+
+  return lines.join("\n");
+}
+
+export function profileJson(contracts: ContractCosts[], opts: ProfileOptions): string {
   return JSON.stringify(
     {
-      toolchain: toolchain.version,
-      zkir: toolchain.zkirVersion,
-      circuits: costs.map((c) => {
-        const d = deep?.get(c.circuit);
-        return d
-          ? { ...c, setupMs: Math.round(d.setupMs), proverKeyBytes: d.proverKeyBytes }
-          : c;
-      }),
+      toolchain: opts.toolchain.version,
+      zkir: opts.toolchain.zkirVersion,
+      contracts: contracts.map(({ source, costs }) => ({
+        source,
+        circuits: costs.map((c) => {
+          const d = opts.deep?.get(c.circuit);
+          const est = opts.showEstimate
+            ? {
+                estimatedProvingMs: Math.round(estimateProvingMs(c.k, opts.calibration).ms),
+                estimateCalibrated: opts.calibration !== undefined,
+              }
+            : {};
+          return d
+            ? { ...c, ...est, setupMs: Math.round(d.setupMs), proverKeyBytes: d.proverKeyBytes }
+            : { ...c, ...est };
+        }),
+      })),
     },
     null,
     2,
@@ -171,5 +251,9 @@ export function profileJson(
 }
 
 export function checkJson(result: CheckResult): string {
+  return JSON.stringify(result, null, 2);
+}
+
+export function diffJson(result: DiffResult): string {
   return JSON.stringify(result, null, 2);
 }
