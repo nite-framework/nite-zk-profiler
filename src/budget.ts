@@ -94,6 +94,45 @@ export function budgetFrom(contracts: ContractCosts[], toolchainLine: string): B
   };
 }
 
+export interface MergeSummary {
+  added: string[];
+  updated: string[];
+  kept: string[];
+}
+
+/**
+ * Fold a new save into an existing budget.
+ *
+ * Saving one contract must not silently discard the others. A monorepo is
+ * saved a contract at a time, and without merging each save wipes the previous
+ * one, which looks like it worked and quietly loses the ceilings you committed.
+ */
+export function mergeBudgets(existing: Budget, incoming: Budget): {
+  budget: Budget;
+  summary: MergeSummary;
+} {
+  const contracts = { ...existing.contracts };
+  const summary: MergeSummary = { added: [], updated: [], kept: [] };
+
+  for (const [source, contract] of Object.entries(incoming.contracts)) {
+    (source in contracts ? summary.updated : summary.added).push(source);
+    contracts[source] = contract;
+  }
+
+  for (const source of Object.keys(existing.contracts)) {
+    if (!(source in incoming.contracts) && source.length > 0) summary.kept.push(source);
+  }
+
+  return {
+    budget: { ...incoming, contracts },
+    summary: {
+      added: summary.added.sort(),
+      updated: summary.updated.sort(),
+      kept: summary.kept.sort(),
+    },
+  };
+}
+
 export function writeBudget(path: string, budget: Budget): void {
   writeFileSync(path, `${JSON.stringify(budget, null, 2)}\n`, "utf8");
 }

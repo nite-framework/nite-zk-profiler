@@ -385,6 +385,7 @@ nite-zk calibrate --observed <ms> --at-k <k>
   --out <dir>                 Compile into a specific directory
   --budget <file>             Use a different baseline path
   --strict                    check: fail on circuits missing from the budget
+  --replace                   save: overwrite the budget instead of merging
   --no-color                  Plain output (NO_COLOR is honoured too)
   --no-cache                  Ignore cached measurements for this run
   +VERSION                    Pin the Compact toolchain, e.g. +0.31.1
@@ -401,6 +402,23 @@ Wrote zk-budget.json: 2 contracts, 16 circuits
 
 `check` then reads every contract back out of the budget, so CI stays one step
 whether the repository holds one contract or ten.
+
+Contracts can also be added one at a time. `save` merges into an existing
+budget rather than replacing it, and says what it did:
+
+```text
+$ nite-zk save packages/mint/src/mint.compact
+Wrote /repo/zk-budget.json
+  1 contract, 3 circuits
+  added:   packages/mint/src/mint.compact
+  kept:    packages/pool/src/lending.compact
+```
+
+`--replace` writes a fresh file when you do want the old entries gone.
+
+The budget is written relative to the working directory, and `save` prints the
+full path it wrote, so running it from the wrong directory is visible
+immediately rather than leaving a file somewhere unexpected.
 
 ### Comparing against a branch
 

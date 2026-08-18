@@ -3,11 +3,13 @@ import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import { analyze } from "./analyze.ts";
 import {
+  type Budget,
   type ContractCosts,
   DEFAULT_BUDGET_PATH,
   budgetFrom,
   budgetSources,
   check,
+  mergeBudgets,
   readBudget,
   writeBudget,
 } from "./budget.ts";
@@ -53,6 +55,7 @@ Options:
   --out <dir>                   Compile into a specific directory (kept)
   --budget <file>               Budget path (default: ${DEFAULT_BUDGET_PATH})
   --strict                      check: fail on circuits missing from the budget
+  --replace                     save: overwrite the budget instead of merging
   --no-color                    Plain output (also honours NO_COLOR)
   --no-cache                    Ignore cached measurements for this run
   +VERSION                      Pin the Compact toolchain, e.g. +0.31.1
@@ -68,6 +71,7 @@ interface Options {
   ref?: string;
   json: boolean;
   strict: boolean;
+  replace: boolean;
   deep: boolean;
   estimate: boolean;
   noColor: boolean;
@@ -86,6 +90,7 @@ export function parseArgs(argv: string[]): Options {
     sources: [],
     json: false,
     strict: false,
+    replace: false,
     deep: false,
     estimate: true,
     noColor: false,
@@ -100,6 +105,7 @@ export function parseArgs(argv: string[]): Options {
 
     if (arg === "--json") opts.json = true;
     else if (arg === "--strict") opts.strict = true;
+    else if (arg === "--replace") opts.replace = true;
     else if (arg === "--deep") opts.deep = true;
     else if (arg === "--estimate") opts.estimate = true;
     else if (arg === "--no-estimate") opts.estimate = false;
@@ -338,18 +344,42 @@ export async function run(argv: string[]): Promise<number> {
   // stored relative to the budget file so the pair stays portable.
   const base = dirname(resolve(opts.budget));
   const line = `${run_.toolchain.version.split(".").slice(0, 2).join(".")}.x`;
-  const budget = budgetFrom(
+  const fresh = budgetFrom(
     run_.contracts.map((c) => ({ source: relative(base, resolve(c.source)), costs: c.costs })),
     line,
   );
-  writeBudget(opts.budget, budget);
+
+  // Merge rather than overwrite. Saving one contract at a time is the normal
+  // way to set up a monorepo, and replacing the file each time would discard
+  // ceilings that are already committed, silently and while reporting success.
+  let existing: Budget | undefined;
+  if (!opts.replace) {
+    try {
+      existing = readBudget(opts.budget);
+    } catch {
+      existing = undefined;
+    }
+  }
+
+  const merged = existing ? mergeBudgets(existing, fresh) : { budget: fresh, summary: undefined };
+  writeBudget(opts.budget, merged.budget);
 
   const circuits = run_.contracts.reduce((n, c) => n + c.costs.length, 0);
+  const written = resolve(opts.budget);
   process.stdout.write(
-    `Wrote ${opts.budget}: ${run_.contracts.length} contract${run_.contracts.length === 1 ? "" : "s"}, ` +
-      `${circuits} circuit${circuits === 1 ? "" : "s"}\n` +
-      "Check it in, then run `nite-zk check` in CI.\n",
+    `Wrote ${written}\n` +
+      `  ${run_.contracts.length} contract${run_.contracts.length === 1 ? "" : "s"}, ` +
+      `${circuits} circuit${circuits === 1 ? "" : "s"}\n`,
   );
+
+  const s_ = merged.summary;
+  if (s_) {
+    if (s_.added.length) process.stdout.write(`  added:   ${s_.added.join(", ")}\n`);
+    if (s_.updated.length) process.stdout.write(`  updated: ${s_.updated.join(", ")}\n`);
+    if (s_.kept.length) process.stdout.write(`  kept:    ${s_.kept.join(", ")}\n`);
+  }
+
+  process.stdout.write("Check it in, then run `nite-zk check` in CI.\n");
   return 0;
 }
 

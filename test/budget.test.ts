@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { analyze } from "../src/analyze.ts";
-import { type Budget, budgetFrom, budgetSources, check } from "../src/budget.ts";
+import {
+  type Budget,
+  budgetFrom,
+  budgetSources,
+  check,
+  mergeBudgets,
+} from "../src/budget.ts";
 
 const costs = analyze([
   { circuit: "cheap", k: 9, rows: 305 },
@@ -124,5 +130,30 @@ describe("check", () => {
   it("tags each row with the contract it came from", () => {
     const result = check(measured, budget, false);
     assert.ok(result.rows.every((r) => r.contract === "src/Main.compact"));
+  });
+});
+
+describe("mergeBudgets", () => {
+  const a = budgetFrom([{ source: "a/A.compact", costs }], "0.31.x");
+  const b = budgetFrom([{ source: "b/B.compact", costs }], "0.31.x");
+
+  // Saving one contract must not discard the others, which is what a monorepo
+  // set up a contract at a time would otherwise do.
+  it("keeps contracts the new save did not mention", () => {
+    const { budget, summary } = mergeBudgets(a, b);
+    assert.deepEqual(budgetSources(budget).sort(), ["a/A.compact", "b/B.compact"]);
+    assert.deepEqual(summary.added, ["b/B.compact"]);
+    assert.deepEqual(summary.kept, ["a/A.compact"]);
+  });
+
+  it("replaces a contract that is saved again", () => {
+    const raised = budgetFrom(
+      [{ source: "a/A.compact", costs: analyze([{ circuit: "cheap", k: 11, rows: 305 }]) }],
+      "0.31.x",
+    );
+    const { budget, summary } = mergeBudgets(a, raised);
+    assert.deepEqual(summary.updated, ["a/A.compact"]);
+    assert.equal(budget.contracts["a/A.compact"]!.circuits.cheap!.maxK, 11);
+    assert.equal(budget.contracts["a/A.compact"]!.circuits.pricey, undefined);
   });
 });
