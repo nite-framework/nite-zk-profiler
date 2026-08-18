@@ -36,7 +36,7 @@ import { toolVersion } from "./version.ts";
 const USAGE = `nite-zk - see what a Compact circuit costs to prove
 
 Usage:
-  nite-zk profile <source...>   Report rows, k and relative cost per circuit
+  nite-zk profile <source...>   Report rows, k, cost and estimated proving time
   nite-zk save <source...>      Write zk-budget.json from current measurements
   nite-zk check [<source...>]   Compare against zk-budget.json
                                 Sources are optional once saved, since the
@@ -46,7 +46,7 @@ Usage:
                                 Anchor proving estimates to a real proof
 
 Options:
-  --estimate                    Show modelled proving time per circuit
+  --no-estimate                 Hide the modelled proving time column
   --deep                        Also generate real proving keys and report
                                 measured setup time and prover key size
   --json                        Machine readable output
@@ -87,7 +87,7 @@ export function parseArgs(argv: string[]): Options {
     json: false,
     strict: false,
     deep: false,
-    estimate: false,
+    estimate: true,
     noColor: false,
     noCache: false,
     budget: DEFAULT_BUDGET_PATH,
@@ -102,6 +102,7 @@ export function parseArgs(argv: string[]): Options {
     else if (arg === "--strict") opts.strict = true;
     else if (arg === "--deep") opts.deep = true;
     else if (arg === "--estimate") opts.estimate = true;
+    else if (arg === "--no-estimate") opts.estimate = false;
     else if (arg === "--no-color") opts.noColor = true;
     else if (arg === "--no-cache") opts.noCache = true;
     else if (arg === "-h" || arg === "--help") opts.help = true;

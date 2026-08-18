@@ -38,13 +38,14 @@ It reports the cost class of every circuit in your contract.
 ```text
 $ nite-zk profile Sample.compact
 
-  circuit        rows      k   capacity   cost
-  bump             24      5         32     1x
-  balanceOf       305      9        512    16x
-  register        368      9        512    16x
-  insert32       2299     13       8192   256x
+  circuit     rows   k  capacity  cost  est. prove
+  bump          24   5        32    1x        ~10ms
+  balanceOf    305   9       512   16x       ~165ms
+  register     368   9       512   16x       ~165ms
+  insert32    2299  13      8192  256x         ~2.6s
 
-  4 circuits, toolchain 0.31.1, zkir 2.1.0, 0.4s
+  4 circuits, toolchain 0.31.1, midnight-zkir 2.1.0, 0.9s
+  est. prove is modelled as 2^k on an uncalibrated default. Run `nite-zk calibrate` to anchor it.
 ```
 
 `k` is the number that matters. `cost` is `2^k` expressed relative to the cheapest circuit in the contract, so you can see at a glance which circuits dominate your proving budget.
@@ -370,14 +371,14 @@ Anything outside this range is rejected with a clear error naming the version fo
 ## Command line surface
 
 ```text
-nite-zk profile <source...>   Report rows, k and relative cost per circuit
+nite-zk profile <source...>   Report rows, k, cost and estimated proving time
 nite-zk save <source...>      Write zk-budget.json from current measurements
 nite-zk check [<source...>]   Compare against zk-budget.json
 nite-zk diff <ref> [<source>] Compare a contract against a git ref
 nite-zk calibrate --observed <ms> --at-k <k>
                               Anchor proving estimates to a real proof
 
-  --estimate                  Show modelled proving time per circuit
+  --no-estimate               Hide the modelled proving time column
   --deep                      Also generate real proving keys, and report
                               measured setup time and prover key size
   --json                      Machine readable output
@@ -420,8 +421,9 @@ check without committing a budget file first.
 
 ### Estimated proving time
 
-`--estimate` models proving time as `time = rate * 2^k`, since a Halo2 proof is
-dominated by work over the full `2^k` domain.
+`profile` shows an estimated proving time by default, modelled as
+`time = rate * 2^k`, since a Halo2 proof is dominated by work over the full
+`2^k` domain. `--no-estimate` hides the column.
 
 The rate is machine specific, so the shipped default is only an order of
 magnitude. Time one real proof and record it, and every estimate becomes

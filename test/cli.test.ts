@@ -62,8 +62,11 @@ describe("parseArgs", () => {
     assert.equal(opts.atK, 16);
   });
 
-  it("parses --estimate", () => {
-    assert.equal(parseArgs(["profile", "S.compact", "--estimate"]).estimate, true);
+  // The proving estimate is shown by default, so the flag that matters is the
+  // one that turns it off.
+  it("shows the proving estimate unless it is turned off", () => {
+    assert.equal(parseArgs(["profile", "S.compact"]).estimate, true);
+    assert.equal(parseArgs(["profile", "S.compact", "--no-estimate"]).estimate, false);
   });
 
   it("reads --out and --budget values", () => {
