@@ -23,7 +23,8 @@
     "zero-knowledge",
     "profiler",
     "proving-cost",
-    "nite-zk-profiler"
+    "nite-zk-profiler",
+    "@nite-framework/nite-zk-profiler"
   ],
   "license": "MIT",
   "repository": {
