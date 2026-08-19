@@ -45,7 +45,8 @@ $ nite-zk profile Sample.compact
   insert32    2299  13      8192  256x         ~2.6s
 
   4 circuits, toolchain 0.31.1, midnight-zkir 2.1.0, 0.9s
-  est. prove is modelled as 2^k on an uncalibrated default. Run `nite-zk calibrate` to anchor it.
+  est. prove models prover work as 2^k, on an uncalibrated default. Run `nite-zk calibrate` to anchor it to your prover.
+  It excludes network time, and assumes the proving key for that k is already on the prover.
 ```
 
 `k` is the number that matters. `cost` is `2^k` expressed relative to the cheapest circuit in the contract, so you can see at a glance which circuits dominate your proving budget.
@@ -452,12 +453,15 @@ $ nite-zk calibrate --observed 9000 --at-k 16
 Calibrated: 0.1373 ms per domain row, from 9000ms at k=16.
 ```
 
-Two limits worth stating plainly. Proving delegated to a remote proof server is
-often dominated by network round trip and server load rather than by circuit
-size, and no model of `k` can see that. And the same gate degree effect that
-makes key size unpredictable, described below, puts a factor of about two around
-any figure derived from `k` alone. Treat it as a ratio you can reason with, not
-a stopwatch.
+The figure models **prover work only**. It excludes network round trip and
+server queueing, and it assumes the proving key for that `k` is already on the
+prover rather than being fetched. Wall clock time against a remote proof server
+is frequently dominated by exactly those two things, which no model of `k` can
+see. The same gate degree effect that makes key size unpredictable, described
+below, puts a factor of about two around any figure derived from `k` alone.
+
+So it answers "how much work is this circuit" rather than "how long will my user
+wait". The first is what you control while writing Compact.
 
 `save` records which contracts the budget describes, so `check` needs no
 arguments afterwards. That is what makes it a one line CI step. It also records

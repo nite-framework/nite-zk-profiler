@@ -125,8 +125,16 @@ export function formatProfile(contracts: ContractCosts[], opts: ProfileOptions):
     lines.push(
       gray(
         opts.calibration
-          ? `  est. prove is modelled as 2^k, calibrated from an observed ${formatDuration(opts.calibration.observedMs)} proof at k=${opts.calibration.observedK}.`
-          : "  est. prove is modelled as 2^k on an uncalibrated default. Run `nite-zk calibrate` to anchor it.",
+          ? `  est. prove models prover work as 2^k, calibrated from an observed ` +
+            `${formatDuration(opts.calibration.observedMs)} proof at k=${opts.calibration.observedK}.`
+          : "  est. prove models prover work as 2^k, on an uncalibrated default. " +
+            "Run `nite-zk calibrate` to anchor it to your prover.",
+      ),
+    );
+
+    lines.push(
+      gray(
+        "  It excludes network time, and assumes the proving key for that k is already on the prover.",
       ),
     );
   }
